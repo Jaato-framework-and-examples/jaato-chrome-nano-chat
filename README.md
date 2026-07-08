@@ -186,8 +186,12 @@ you talked about. The panel persists the daemon `session_id` (in
 So both halves come back: the model's full context **and** the visible transcript.
 (The cold runner takes ~10-15s to warm on reattach, so the first `requestHistory`
 can arrive empty — the panel re-asks until it lands, showing *"Resuming…"* while it
-waits.) To force a clean start, clear the extension's storage (or the session just
-falls through to *create* once the daemon no longer lists that id).
+waits.)
+
+Because reload now *resumes* rather than resets, the header has a **"New chat"**
+button — it drops the persisted id, clears the log, and connects a fresh session.
+That's the deliberate reset (and the way out of a context-full conversation). GC
+(below) keeps a session healthy, but "New chat" is there when you want a clean slate.
 
 > **Needs a daemon with WS resume support** for workspace-pinless (browser)
 > clients — the session-workspace index, inline-profile restore (+ honoring the

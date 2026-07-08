@@ -313,7 +313,7 @@ const CDP_TOOLS = [
 
 const $ = (id) => document.getElementById(id);
 const log = $("log"), input = $("input"), sendBtn = $("send");
-const dot = $("dot"), statusText = $("statusText");
+const dot = $("dot"), statusText = $("statusText"), newChatBtn = $("newChat");
 
 let session = null;
 let busy = false;
@@ -340,6 +340,21 @@ function setEnabled(on) {
   busy = !on;
   input.disabled = !on;
   sendBtn.disabled = !on;
+  if (newChatBtn) newChatBtn.disabled = !on;   // no reset mid-turn / while (re)connecting
+}
+
+// Start a fresh session: drop the persisted id so connect() creates a new one
+// (reload alone can't do this any more — it RESUMES). This is the deliberate
+// reset, and the way out of a context-full session.
+async function resetSession() {
+  if (busy) return;
+  setEnabled(false);
+  try { if (session) await session.close(); } catch (e) { /* ignore */ }
+  session = null;
+  await dropSid();          // forget it → connect() falls through to create
+  log.innerHTML = "";       // clear the visible transcript
+  addMeta("New chat — starting a fresh session…");
+  await connect();          // no persisted id → creates fresh; re-enables input on success
 }
 
 function autoResize() {
@@ -572,5 +587,6 @@ input.addEventListener("keydown", (e) => {
   }
 });
 sendBtn.addEventListener("click", send);
+newChatBtn.addEventListener("click", resetSession);
 
 connect();
