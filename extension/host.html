@@ -1,0 +1,12 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>jaato chrome_ai host</title>
+<!--
+  Secure-origin host page for the jaato chrome_ai provider.
+  The daemon attaches over CDP and evaluates LanguageModel (Gemini Nano) in
+  THIS page's context. A chrome-extension:// origin is a secure context, so the
+  Prompt API is available here (Chrome 138+ for extensions) — no network origin
+  like example.com needed. The page is intentionally blank; only its origin
+  matters.
+-->
+<body>jaato chrome_ai host — Gemini Nano runs here.</body>

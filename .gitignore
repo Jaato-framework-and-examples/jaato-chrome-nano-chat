@@ -1,0 +1,9 @@
+# Dependencies
+node_modules/
+
+# Local env / config (not used by the extension; inline profile spec is used instead)
+.env
+.jaato/
+
+# Logs / scratch
+*.log
