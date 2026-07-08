@@ -175,6 +175,105 @@ const CDP_TOOLS = [
       })()`);
     },
   },
+  {
+    name: "browser_list_links",
+    description: "List visible links/buttons in the active tab as [{i,text,href}] (JSON), capped at `max` (default 30). Use to choose a click target by its text instead of guessing a selector.",
+    parameters: { type: "object", properties: { max: { type: "number" } } },
+    auto_approve: true,
+    handler: async ({ max }) => {
+      const n = Math.min(Math.max(Number(max) || 30, 1), 100);
+      return evalJs(`(() => {
+        const seen = new Set(), out = [];
+        const els = [...document.querySelectorAll("a[href],button,[role=button],input[type=submit],input[type=button]")];
+        for (const el of els) {
+          const r = el.getBoundingClientRect();
+          if (r.width === 0 || r.height === 0) continue;               // skip hidden
+          const text = (el.innerText || el.value || el.getAttribute("aria-label") || "").split("\\n").join(" ").trim().slice(0, 80);
+          if (!text) continue;
+          const href = el.tagName === "A" ? el.href : "";
+          const key = text + "|" + href;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          out.push({ i: out.length, text, href });
+          if (out.length >= ${n}) break;
+        }
+        return JSON.stringify(out);
+      })()`);
+    },
+  },
+  {
+    name: "browser_back",
+    description: "Go back one entry in the active tab's history; returns the resulting URL.",
+    parameters: { type: "object", properties: {} },
+    auto_approve: true,
+    handler: async () => {
+      await evalJs("history.back()");
+      await new Promise((r) => setTimeout(r, 1200));
+      return "ok, url=" + (await evalJs("location.href"));
+    },
+  },
+  {
+    name: "browser_type",
+    description: "Type `text` into a field in the active tab, matched by CSS `selector` or by its placeholder/label/name `field`. Returns the field's new value.",
+    parameters: { type: "object", properties: { text: { type: "string" }, selector: { type: "string" }, field: { type: "string" } }, required: ["text"] },
+    auto_approve: true,
+    handler: async ({ text, selector, field }) => {
+      const t = JSON.stringify(text || "");
+      const sel = JSON.stringify(selector || "");
+      const fld = JSON.stringify((field || "").toLowerCase());
+      return evalJs(`(() => {
+        try {
+          const t = ${t}, sel = ${sel}, fld = ${fld};
+          let el = null;
+          if (sel) { try { el = document.querySelector(sel); } catch (e) { return "invalid selector: " + e.message; } }
+          if (!el && fld) {
+            const inputs = [...document.querySelectorAll("input,textarea")];
+            el = inputs.find((n) => {
+              const hay = [n.placeholder, n.name, n.getAttribute("aria-label"), n.id].map((x) => (x || "").toLowerCase()).join(" ");
+              if (hay.includes(fld)) return true;
+              if (n.id) { const lab = document.querySelector('label[for="' + n.id + '"]'); if (lab && (lab.innerText || "").toLowerCase().includes(fld)) return true; }
+              const wrap = n.closest("label");
+              return !!(wrap && (wrap.innerText || "").toLowerCase().includes(fld));
+            }) || null;
+          }
+          if (!el) { const a = document.activeElement; if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA")) el = a; }
+          if (!el) return "no matching field";
+          el.focus();
+          const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+          const desc = Object.getOwnPropertyDescriptor(proto, "value");
+          if (desc && desc.set) desc.set.call(el, t); else el.value = t;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          return "typed into " + ((el.name || el.placeholder || el.id || el.tagName) + "").slice(0, 40) + ": " + (el.value || "").slice(0, 60);
+        } catch (e) { return "type error: " + e.message; }
+      })()`);
+    },
+  },
+  {
+    name: "browser_submit",
+    description: "Submit the form of the focused or `selector`-matched field (or press Enter on it). Returns the resulting URL.",
+    parameters: { type: "object", properties: { selector: { type: "string" } } },
+    auto_approve: true,
+    handler: async ({ selector }) => {
+      const sel = JSON.stringify(selector || "");
+      const r = await evalJs(`(() => {
+        try {
+          const sel = ${sel};
+          let el = null;
+          if (sel) { try { el = document.querySelector(sel); } catch (e) { return "invalid selector: " + e.message; } }
+          if (!el) el = document.activeElement;
+          if (!el) return "no target to submit";
+          const form = el.form || (el.closest ? el.closest("form") : null);
+          if (form) { if (form.requestSubmit) form.requestSubmit(); else form.submit(); return "submitted form"; }
+          ["keydown", "keypress", "keyup"].forEach((type) =>
+            el.dispatchEvent(new KeyboardEvent(type, { key: "Enter", code: "Enter", keyCode: 13, which: 13, bubbles: true })));
+          return "pressed Enter on " + (el.tagName || "").toLowerCase();
+        } catch (e) { return "submit error: " + e.message; }
+      })()`);
+      await new Promise((res) => setTimeout(res, 1200));
+      return r + " (url=" + (await evalJs("location.href")) + ")";
+    },
+  },
 ];
 
 const $ = (id) => document.getElementById(id);
@@ -240,7 +339,7 @@ async function connect() {
     setEnabled(true);
     addMeta("Connected — Nano anchored to " + anchor.anchor + ".");
     addMeta(IN_EXTENSION
-      ? "Browser tools ON (navigate / read / click the active tab)."
+      ? "Browser tools ON (navigate · read · list links · click · type · submit · back)."
       : "Browser tools need the loaded extension — running as a plain page, so they're off.");
     input.focus();
   } catch (e) {

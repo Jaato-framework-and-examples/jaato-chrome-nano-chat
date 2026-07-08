@@ -110,15 +110,19 @@ as a plain page — the same UI, minus the browser-driving tools (those need the
 When run as the loaded extension, the panel gives Nano a **curated set of CDP
 host tools** (jaato `clientTools`) so the model can drive the browser. Each
 handler runs **client-side in the extension** via `chrome.debugger` on the
-**active tab** — the daemon never touches your browser. All four are
-`auto_approve` in this POC (see *Security note*).
+**active tab** — the daemon never touches your browser. All are `auto_approve`
+in this POC (see *Security note*).
 
 | Tool | What it does |
 |------|--------------|
 | `browser_navigate` | Navigate the active tab to an absolute URL; returns the final URL. |
 | `browser_get_url` | Return the active tab's current URL + title (JSON). |
 | `browser_get_text` | Return the active tab's visible text, truncated (default 1200, max 4000 chars). |
+| `browser_list_links` | List visible links/buttons as `[{i,text,href}]` (capped) — lets the model pick a target by text instead of guessing a selector. |
 | `browser_click` | Click an element by CSS `selector` **or** visible `text` (case-insensitive substring); returns what was clicked. |
+| `browser_type` | Type `text` into a field matched by CSS `selector` or its placeholder/label/name `field`; returns the field's new value. |
+| `browser_submit` | Submit the form of the focused / `selector`-matched field (or press Enter); returns the resulting URL. |
+| `browser_back` | Go back one entry in the active tab's history; returns the resulting URL. |
 
 **These tools are deliberately few and blunt, because Gemini Nano is a very small
 model with a tiny (~6–9k token, shared input+output) context.** That shapes what
@@ -189,6 +193,7 @@ Two things shape when you feel it:
 | `start-nano-chat.ps1` | One-command stack launcher / teardown. |
 | `wsmoke.mjs` | Plain chat smoke over the exact facade path. |
 | `wsmoke-tools.mjs` | `clientTools` smoke — the model calls a browser tool and grounds on the result. |
+| `wsmoke-tools2.mjs` | Verifies the newer tools' page-JS (`list_links`/`type`/`submit`) and that Nano selects + calls `browser_list_links` end-to-end. |
 | `wsmoke-reuse.mjs` | Verifies `reuse_page` attaches (no new tab) and leaves the tab open. |
 | `wsmoke-reuse-nav.mjs` | Verifies the session self-heals when the anchored tab navigates. |
 
