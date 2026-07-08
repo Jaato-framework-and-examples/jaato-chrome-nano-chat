@@ -123,6 +123,24 @@ re-installed on the next turn automatically — the session self-heals.
 > Requires jaato with the `chrome_ai` `reuse_page` knob. Without it, the provider
 > falls back to creating (and closing) a dedicated tab.
 
+## First-turn latency (warm-up)
+
+Gemini Nano pays a one-time **cold-start** cost — the on-device model has to be
+compiled/loaded before it produces the first token (~10s, hardware-dependent).
+Two things shape when you feel it:
+
+- **`chrome_ai` `warmup` (default on).** The provider fires one throwaway
+  generation at `connect()` to absorb that cost, so **connecting takes a few
+  seconds longer but your first real message streams promptly.** Set
+  `warmup: false` in `plugin_configs.chrome_ai` for the fastest connect if you'd
+  rather pay the cold-start on the first message instead. On top of this, the
+  jaato session's runner bootstrap adds a few seconds to the very first connect.
+- **Right after a cold Chrome launch**, Nano may briefly report
+  `downloadable`/`downloading` before it flips to `available`. A message sent in
+  that window fails with `ChromeAIUnavailableError` — **just send it again.**
+  (The smokes hit this too: the first attempt after launching the stack can
+  error; a retry a few seconds later succeeds.)
+
 ## Files
 
 | Path | What |
