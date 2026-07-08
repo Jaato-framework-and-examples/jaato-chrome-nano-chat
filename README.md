@@ -105,6 +105,41 @@ Or skip the extension entirely and open **`http://localhost:8765/sidepanel.html`
 as a plain page — the same UI, minus the browser-driving tools (those need the
 `chrome.debugger` permission the loaded extension has).
 
+## Browser tools (and what Nano's tiny context allows)
+
+When run as the loaded extension, the panel gives Nano a **curated set of CDP
+host tools** (jaato `clientTools`) so the model can drive the browser. Each
+handler runs **client-side in the extension** via `chrome.debugger` on the
+**active tab** — the daemon never touches your browser. All four are
+`auto_approve` in this POC (see *Security note*).
+
+| Tool | What it does |
+|------|--------------|
+| `browser_navigate` | Navigate the active tab to an absolute URL; returns the final URL. |
+| `browser_get_url` | Return the active tab's current URL + title (JSON). |
+| `browser_get_text` | Return the active tab's visible text, truncated (default 1200, max 4000 chars). |
+| `browser_click` | Click an element by CSS `selector` **or** visible `text` (case-insensitive substring); returns what was clicked. |
+
+**These tools are deliberately few and blunt, because Gemini Nano is a very small
+model with a tiny (~6–9k token, shared input+output) context.** That shapes what
+works:
+
+- **Keep the context small.** The profile sets `suppress_base_instructions: true`
+  and `plugins: []` so the prompt even fits; a long conversation will pressure the
+  context, so expect to reset often. `browser_get_text` truncates hard — Nano
+  cannot ingest a whole page.
+- **Tool calls are prompt-injected, not native.** The `chrome_ai` provider
+  withholds the native `tools` array and instead injects tool schemas into the
+  prompt, parsing fenced ` ```tool_call ` JSON blocks back out of the reply. That
+  is inherently less reliable than native tool calling (hallucinated tool names
+  surface as recoverable errors). The panel **hides those `tool_call` blocks**
+  from the chat so you see prose, not markup.
+- **Prefer single, explicit, one-shot asks.** e.g. *"Use `browser_get_url`, then
+  tell me the page title in one sentence."* Multi-step reasoning ("find the login
+  link, click it, then…") tends to fail — Nano will often ask *you* for a CSS
+  selector instead of chaining tools. `browser_click` accepts a visible-`text`
+  match precisely because the model so often hands over a placeholder selector.
+
 ## Anchoring (`reuse_page`)
 
 The `chrome_ai` provider needs a page that exposes the `LanguageModel` API.
