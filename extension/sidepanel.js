@@ -385,10 +385,12 @@ function setCtxMeter(frac, used, limit) {
   $("ctx").title = "Nano context: " + used + " / " + limit + " tokens (" + pct + "%)";
 }
 function updateCtxMeter(ev) {
-  const u = ev && ev.usage;
-  if (!u) return;
-  const limit = u.context_limit, used = u.total_tokens;
-  // Advisor: context_limit is 0 = "honest unknown" pre-first-turn — don't divide.
+  // instruction_budget.updated.budget_snapshot carries BOTH the real context
+  // limit AND used tokens; context.updated.usage omits context_limit entirely.
+  const b = ev && ev.budget_snapshot;
+  if (!b) return;
+  const limit = b.context_limit, used = b.total_tokens;
+  // context_limit is 0 = "honest unknown" pre-first-turn (jaato #541) — don't divide.
   if (!limit || limit <= 0 || typeof used !== "number") { setCtxMeter(null); return; }
   setCtxMeter(used / limit, used, limit);
 }
@@ -564,8 +566,8 @@ async function connect() {
     // Subscribe before attach — the daemon can drive the resumed turn immediately
     // and the client has no zero-subscriber buffer.
     client.subscribe(EventTypeValue.AGENT_OUTPUT, () => {});
-    // Live context-usage meter.
-    client.subscribe(EventTypeValue.CONTEXT_UPDATED || "context.updated", updateCtxMeter);
+    // Live context-usage meter — instruction_budget carries limit + used together.
+    client.subscribe(EventTypeValue.INSTRUCTION_BUDGET_UPDATED || "instruction_budget.updated", updateCtxMeter);
 
     // Resume the persisted session if the daemon still lists it; else create fresh.
     let resumed = false;
