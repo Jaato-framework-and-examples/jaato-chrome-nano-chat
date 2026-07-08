@@ -152,27 +152,38 @@ const CDP_TOOLS = [
   },
   {
     name: "browser_click",
-    description: "Click an element in the active tab, matched by CSS `selector` OR by visible `text` (link/button text, case-insensitive substring). Returns what was clicked.",
+    description: "Click an element in the active tab, matched by CSS `selector` OR by visible `text` (link/button text, case-insensitive substring). Reports what was clicked and, if it navigated, the resulting URL.",
     parameters: { type: "object", properties: { selector: { type: "string" }, text: { type: "string" } } },
     auto_approve: true,
     handler: async ({ selector, text }) => {
       const sel = JSON.stringify(selector || "");
       const txt = JSON.stringify((text || "").toLowerCase());
-      return evalJs(`(() => {
+      const before = await evalJs("location.href");
+      const result = await evalJs(`(() => {
         try {
           const sel = ${sel}, txt = ${txt};
           let el = null;
           if (sel) { try { el = document.querySelector(sel); } catch (e) { return "invalid selector: " + e.message; } }
           if (!el && txt) {
             const cands = [...document.querySelectorAll("a,button,[role=button],input[type=submit],input[type=button]")];
-            el = cands.find((n) => ((n.innerText || n.value || "").toLowerCase().includes(txt))) || null;
+            // innerText || textContent: innerText can be empty for elements that
+            // aren't laid out; textContent is layout-independent.
+            el = cands.find((n) => ((n.innerText || n.textContent || n.value || "").toLowerCase().includes(txt))) || null;
           }
           if (!el) return "no matching element";
           el.scrollIntoView();
+          // If it targets a new tab, retarget to this tab so navigation happens
+          // where the model can see it (it can only read the tab it drives).
+          const a = el.tagName === "A" ? el : (el.closest ? el.closest("a[href]") : null);
+          if (a && a.target === "_blank") a.target = "_self";
           el.click();
-          return "clicked: " + (el.innerText || el.value || el.tagName).trim().slice(0, 60);
+          return "clicked: " + (el.innerText || el.textContent || el.value || el.tagName).trim().slice(0, 60);
         } catch (e) { return "click error: " + e.message; }
       })()`);
+      if (!/^clicked:/.test(result)) return result;               // no match / error — pass through
+      await new Promise((r) => setTimeout(r, 1200));               // let any navigation settle
+      const after = await evalJs("location.href");
+      return after !== before ? result + " → navigated to " + after : result + " (no navigation; still at " + after + ")";
     },
   },
   {
