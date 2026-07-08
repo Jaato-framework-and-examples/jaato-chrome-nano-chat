@@ -143,6 +143,12 @@ works:
   link, click it, then…") tends to fail — Nano will often ask *you* for a CSS
   selector instead of chaining tools. `browser_click` accepts a visible-`text`
   match precisely because the model so often hands over a placeholder selector.
+- **Don't argue with it; reset instead.** The profile ships a short persona line
+  (re-sent every turn) that keeps Nano tool-aware. But if you tell it *"you can't
+  actually browse"* it may adopt an "I'm just a language model" persona from its
+  own history and start refusing tools it just used. Reload the panel (fresh
+  session) to clear that, rather than debating it — and avoid dumping huge results
+  (e.g. `browser_list_links` on a Wikipedia sidebar) that crowd the ~9k context.
 
 ## Anchoring (`reuse_page`)
 
@@ -195,6 +201,7 @@ Two things shape when you feel it:
 | `wsmoke-tools.mjs` | `clientTools` smoke — the model calls a browser tool and grounds on the result. |
 | `wsmoke-tools2.mjs` | Verifies the newer tools' page-JS (`list_links`/`type`/`submit`) and that Nano selects + calls `browser_list_links` end-to-end. |
 | `wsmoke-navfix.mjs` | Regression: `navigate to en.wikipedia.org` selects `browser_navigate` (guards the prose-tools preamble fix — no example id copied). |
+| `wsmoke-persona.mjs` | Confirms `system_instructions` reaches Nano and that the persona line keeps it calling tools after a "you can't browse" provocation. |
 | `wsmoke-reuse.mjs` | Verifies `reuse_page` attaches (no new tab) and leaves the tab open. |
 | `wsmoke-reuse-nav.mjs` | Verifies the session self-heals when the anchored tab navigates. |
 

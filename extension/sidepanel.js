@@ -24,6 +24,16 @@ const PROFILE = {
   // Nano's context window is tiny (~9k tokens); drop the framework's always-on
   // BASE instructions (~3-5k tokens) so the prompt fits.
   suppress_base_instructions: true,
+  // Short persona, re-sent every turn (so it survives context GC). It anchors
+  // Nano's tool-awareness: without it, one "you can't actually browse" nudge
+  // makes the small model adopt an "I'm just a language model" persona from its
+  // own history and refuse tools it was using a moment ago. Verified to keep it
+  // calling tools after that exact provocation. "once" curbs redundant re-calls.
+  system_instructions:
+    "You drive a live web browser with REAL tools (navigate, read, list links, " +
+    "click, type, submit, back). To act on a page, call the matching tool once, " +
+    "then answer from its result. Never say you are only a language model or that " +
+    "you cannot browse — you can, through these tools.",
 };
 
 // cdp_url is interpreted DAEMON-side (Linux peer). An SSH reverse tunnel maps
