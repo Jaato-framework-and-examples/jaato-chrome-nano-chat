@@ -123,15 +123,20 @@ in this POC (see *Security note*).
 | `browser_type` | Type `text` into a field matched by CSS `selector` or its placeholder/label/name `field`; returns the field's new value. |
 | `browser_submit` | Submit the form of the focused / `selector`-matched field (or press Enter); returns the resulting URL. |
 | `browser_back` | Go back one entry in the active tab's history; returns the resulting URL. |
+| `browser_open_tab` | Open a new tab (optionally at a `url`) and focus it; returns its id/url. |
+| `browser_close_tab` | Close a tab matched by URL/title `match` (or the active tab); **never closes the last remaining tab**. |
 
 **These tools are deliberately few and blunt, because Gemini Nano is a very small
 model with a tiny (~6–9k token, shared input+output) context.** That shapes what
 works:
 
 - **Keep the context small.** The profile sets `suppress_base_instructions: true`
-  and `plugins: []` so the prompt even fits; a long conversation will pressure the
-  context, so expect to reset often. `browser_get_text` truncates hard — Nano
-  cannot ingest a whole page.
+  and `plugins: []` so the prompt even fits, and a **budget GC** policy (see the
+  `gc` block) trims the oldest content once usage crosses ~75% so a long/resumed
+  chat self-manages instead of wedging. The header shows a **context-usage bar**
+  with marker lines at the GC target/trigger/pressure thresholds — you can watch it
+  fill and GC pull it back. `browser_get_text` still truncates hard — Nano can't
+  ingest a whole page.
 - **Tool calls are prompt-injected, not native.** The `chrome_ai` provider
   withholds the native `tools` array and instead injects tool schemas into the
   prompt, parsing fenced ` ```tool_call ` JSON blocks back out of the reply. That

@@ -38,6 +38,12 @@
       #newChat:hover:not(:disabled) { color: var(--fg); border-color: var(--accent); }
       #newChat:disabled { opacity: 0.5; cursor: not-allowed; }
       #status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+      #ctx { display: flex; align-items: center; gap: 8px; padding: 5px 12px; border-bottom: 1px solid var(--border); font-size: 11px; color: var(--muted); }
+      #ctxTrack { position: relative; flex: 1; height: 6px; border-radius: 3px; background: var(--border); }
+      #ctxFill { position: absolute; left: 0; top: 0; height: 100%; width: 0%; border-radius: 3px; background: #22c55e; transition: width .3s ease, background .3s ease; }
+      .ctxMark { position: absolute; top: -2px; height: 10px; width: 2px; transform: translateX(-1px); border-radius: 1px; opacity: 0.75; z-index: 2; }
+      .ctxMark.target { background: #22c55e; } .ctxMark.threshold { background: #f59e0b; } .ctxMark.pressure { background: #ef4444; }
+      #ctxLabel { min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
       #dot { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; }
       #dot.up { background: #22c55e; } #dot.down { background: #ef4444; }
       #log { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
@@ -68,6 +74,10 @@
       <button id="newChat" title="Start a fresh session (clears the saved conversation)" disabled>New chat</button>
       <div id="status"><span id="dot"></span><span id="statusText">connecting…</span></div>
     </header>
+    <div id="ctx" title="Nano context usage (budget-GC thresholds marked)">
+      <div id="ctxTrack"><div id="ctxFill"></div></div>
+      <span id="ctxLabel">—</span>
+    </div>
     <div id="log"></div>
     <footer>
       <textarea id="input" rows="1" placeholder="Message Gemini Nano…" disabled></textarea>

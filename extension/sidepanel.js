@@ -309,11 +309,89 @@ const CDP_TOOLS = [
       return r + " (url=" + (await evalJs("location.href")) + ")";
     },
   },
+  {
+    name: "browser_open_tab",
+    description: "Open a new browser tab (optionally at an absolute `url`; default a blank tab) and focus it. Returns the new tab's id and url.",
+    parameters: { type: "object", properties: { url: { type: "string" } } },
+    auto_approve: true,
+    handler: async ({ url }) => {
+      const props = { active: true };
+      if (url && /^https?:\/\//i.test(url)) props.url = url;
+      const tab = await new Promise((resolve, reject) => {
+        chrome.tabs.create(props, (t) => { const e = chrome.runtime.lastError; e ? reject(new Error(e.message)) : resolve(t); });
+      });
+      return "opened tab " + tab.id + (props.url ? " → " + props.url : " (blank)");
+    },
+  },
+  {
+    name: "browser_close_tab",
+    description: "Close a browser tab matched by a URL or title substring `match` (case-insensitive); with no `match`, closes the active tab. NEVER closes the last remaining tab.",
+    parameters: { type: "object", properties: { match: { type: "string" } } },
+    auto_approve: true,
+    handler: async ({ match }) => {
+      const all = await new Promise((resolve) => chrome.tabs.query({}, (t) => resolve(t || [])));
+      // Guard: refuse to close the last tab — leaving zero tabs is never intended.
+      if (all.length <= 1) return "refused: won't close the last remaining browser tab.";
+      let target = null;
+      const m = (match || "").toLowerCase();
+      if (m) {
+        target = all.find((t) => ((t.url || "") + " " + (t.title || "")).toLowerCase().includes(m)) || null;
+        if (!target) return "no open tab matches " + JSON.stringify(match);
+      } else {
+        target = await new Promise((resolve) => chrome.tabs.query({ active: true, lastFocusedWindow: true }, (t) => resolve((t && t[0]) || null)));
+        if (!target) return "no active tab to close";
+      }
+      const label = (target.title || target.url || ("tab " + target.id)).trim().slice(0, 60);
+      await new Promise((resolve, reject) => {
+        chrome.tabs.remove(target.id, () => { const e = chrome.runtime.lastError; e ? reject(new Error(e.message)) : resolve(); });
+      });
+      const left = all.length - 1;
+      return "closed: " + label + "  (" + left + " tab" + (left === 1 ? "" : "s") + " left)";
+    },
+  },
 ];
 
 const $ = (id) => document.getElementById(id);
 const log = $("log"), input = $("input"), sendBtn = $("send");
 const dot = $("dot"), statusText = $("statusText"), newChatBtn = $("newChat");
+const ctxTrack = $("ctxTrack"), ctxFill = $("ctxFill"), ctxLabel = $("ctxLabel");
+
+// Context usage meter. Nano's window is tiny, so seeing it fill (and watching
+// budget GC pull it back) is genuinely useful. Threshold markers are derived
+// from PROFILE.gc so they always match the live config.
+function initCtxMarkers() {
+  const gc = PROFILE.gc || {};
+  const marks = [
+    { pct: gc.target_percent, cls: "target", label: "GC target (trims to " + gc.target_percent + "%)" },
+    { pct: gc.threshold_percent, cls: "threshold", label: "GC triggers (" + gc.threshold_percent + "%)" },
+    { pct: gc.pressure_percent, cls: "pressure", label: "pressure — touches recent turns (" + gc.pressure_percent + "%)" },
+  ];
+  for (const m of marks) {
+    if (typeof m.pct !== "number") continue;
+    const el = document.createElement("div");
+    el.className = "ctxMark " + m.cls;
+    el.style.left = m.pct + "%";
+    el.title = m.label;
+    ctxTrack.appendChild(el);
+  }
+}
+// frac null = unknown (pre-first-turn context_limit:0) → show "—", empty bar.
+function setCtxMeter(frac, used, limit) {
+  if (frac == null) { ctxFill.style.width = "0%"; ctxLabel.textContent = "—"; $("ctx").title = "Nano context usage (unknown until first turn)"; return; }
+  const pct = Math.max(0, Math.min(100, Math.round(frac * 100)));
+  ctxFill.style.width = pct + "%";
+  ctxFill.style.background = pct < 70 ? "#22c55e" : pct < 88 ? "#f59e0b" : "#ef4444";
+  ctxLabel.textContent = pct + "%";
+  $("ctx").title = "Nano context: " + used + " / " + limit + " tokens (" + pct + "%)";
+}
+function updateCtxMeter(ev) {
+  const u = ev && ev.usage;
+  if (!u) return;
+  const limit = u.context_limit, used = u.total_tokens;
+  // Advisor: context_limit is 0 = "honest unknown" pre-first-turn — don't divide.
+  if (!limit || limit <= 0 || typeof used !== "number") { setCtxMeter(null); return; }
+  setCtxMeter(used / limit, used, limit);
+}
 
 let session = null;
 let busy = false;
@@ -448,6 +526,7 @@ function renderHistory(history) {
 
 async function connect() {
   setStatus("connecting", "connecting…");
+  setCtxMeter(null);   // unknown until the session reports usage
   try {
     const anchor = await resolveAnchor();
     const profile = {
@@ -485,6 +564,8 @@ async function connect() {
     // Subscribe before attach — the daemon can drive the resumed turn immediately
     // and the client has no zero-subscriber buffer.
     client.subscribe(EventTypeValue.AGENT_OUTPUT, () => {});
+    // Live context-usage meter.
+    client.subscribe(EventTypeValue.CONTEXT_UPDATED || "context.updated", updateCtxMeter);
 
     // Resume the persisted session if the daemon still lists it; else create fresh.
     let resumed = false;
@@ -522,7 +603,7 @@ async function connect() {
     }
     setEnabled(true);
     addMeta(IN_EXTENSION
-      ? "Browser tools ON (navigate · read · list links · click · type · submit · back)."
+      ? "Browser tools ON (navigate · read · list links · click · type · submit · back · open/close tab)."
       : "Browser tools need the loaded extension — running as a plain page, so they're off.");
     input.focus();
   } catch (e) {
@@ -589,4 +670,5 @@ input.addEventListener("keydown", (e) => {
 sendBtn.addEventListener("click", send);
 newChatBtn.addEventListener("click", resetSession);
 
+initCtxMarkers();
 connect();
