@@ -21,8 +21,14 @@ const PROFILE = {
   model: "gemini-nano",
   provider: "chrome_ai",
   plugins: [],
-  // Nano's context window is tiny (~9k tokens); drop the framework's always-on
-  // BASE instructions (~3-5k tokens) so the prompt fits.
+  // Nano's context window is tiny (~9k tokens). `true` is granular since jaato
+  // #542: it drops BOTH the disk `.jaato/instructions/*.md` layer AND the framework
+  // prompt constants (VERIFICATION PROTOCOL / BATCHING / SUMMARY FORMAT — the last
+  // is what made Nano pad replies with "**Actions**: None…"), while KEEPING the
+  // untrusted-content security boundary (our browser tools read live web pages).
+  // Reclaims ~1.1k tokens (~55% of the system prompt). Needs a daemon on main
+  // ≥ #542; older daemons only drop the disk layer. For persona+tools with no
+  // security boundary either: { disk: true, constants: true, security: true }.
   suppress_base_instructions: true,
   // Short persona, re-sent every turn (so it survives context GC). It anchors
   // Nano's tool-awareness: without it, one "you can't actually browse" nudge
