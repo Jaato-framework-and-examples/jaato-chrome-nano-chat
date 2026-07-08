@@ -376,6 +376,47 @@ function listSessionIds(client, timeoutMs = 8000) {
   });
 }
 
+// Fetch the conversation so a resumed session can repaint its transcript. On a
+// COLD reattach the runner is still spawning, so the first requestHistory can
+// arrive empty/error — re-ask until a populated HistoryEvent lands (or time out
+// and just show the resumed note without the transcript). The daemon reads the
+// history from the runner (needs recent jaato with the history-from-runner fix).
+function fetchHistory(client, timeoutMs = 30000) {
+  return new Promise((resolve) => {
+    let done = false;
+    let iv, to, unsub;
+    const finish = (h) => { if (done) return; done = true; if (unsub) unsub(); clearInterval(iv); clearTimeout(to); resolve(h || []); };
+    unsub = client.subscribeAll((ev) => { if (ev && Array.isArray(ev.history) && ev.history.length) finish(ev.history); });
+    client.requestHistory("main");
+    iv = setInterval(() => { if (!done) client.requestHistory("main"); }, 4000);
+    to = setTimeout(() => finish([]), timeoutMs);
+  });
+}
+
+// Paint restored history as chat bubbles: user + model turns (tool/system
+// skipped), joining Part text and stripping the hidden tool_call markup.
+function renderHistory(history) {
+  let painted = 0;
+  for (const m of history || []) {
+    const role = m.role || m.author || "";
+    let text = m.text != null ? m.text
+      : Array.isArray(m.parts) ? m.parts.map((p) => (p && p.text) || "").join("")
+      : (typeof m.content === "string" ? m.content : "");
+    text = (text || "").trim();
+    if (!text) continue;
+    if (role === "user") { addUser(text); painted++; }
+    else if (role === "model" || role === "assistant") {
+      const clean = stripToolCalls(text).trim();
+      if (!clean) continue;   // pure tool-call turn — nothing visible to show
+      const el = addBot();
+      el.classList.remove("pending");
+      el.textContent = clean;
+      painted++;
+    }
+  }
+  return painted;
+}
+
 async function connect() {
   setStatus("connecting", "connecting…");
   try {
@@ -439,10 +480,18 @@ async function connect() {
 
     session = new Session(client, () => "y", toolHandlers);   // onPermission: approve (POC)
     setStatus("up", "gemini-nano · connected");
+    if (resumed) {
+      // Repaint the prior conversation, then confirm. The cold runner is still
+      // warming, so this can take ~10-15s; keep input disabled until it lands.
+      addMeta("↻ Resuming your previous session…");
+      const painted = renderHistory(await fetchHistory(client));
+      addMeta(painted
+        ? "↻ Resumed — Nano remembers the conversation above."
+        : "↻ Resumed your previous session — Nano still remembers it.");
+    } else {
+      addMeta("Connected — Nano anchored to " + anchor.anchor + ".");
+    }
     setEnabled(true);
-    addMeta(resumed
-      ? "↻ Resumed your previous session — Nano still remembers the conversation."
-      : "Connected — Nano anchored to " + anchor.anchor + ".");
     addMeta(IN_EXTENSION
       ? "Browser tools ON (navigate · read · list links · click · type · submit · back)."
       : "Browser tools need the loaded extension — running as a plain page, so they're off.");
