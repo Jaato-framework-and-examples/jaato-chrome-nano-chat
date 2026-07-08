@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Chat with Chrome's on-device Gemini Nano through the jaato WebSocket facade.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoCKwNM932mDNY/8PK+4pwmsi74WGuCX2bACrOTuCT61us4OIJz6IsG8x9GiHavwa5wO1LoX4CqWTYwKQb91wZyk1RBxsCr3Y1uB4eDJ6GpadlQWR4QnyvDz6mIbUUaLnOo9rd5V+WxMcVZMMbh64xgoMZWipGXNbW/xkr+eKva4u+gdgOYtgHt62VF/QpPNzz10aeyMmiOcplhLRU8Y+ihJnA3AhxVkW2G7R43E9cAt2QlFedr+NMhvuW3hnQACRN8eNLjGeTd/ZhaXF1XMkJBzTcWBQs6+V0j55NWNv9N2Orf2t7RfRTltgUQpS+I+ncQx4K+wxaX+wbGsWgyig5wIDAQAB",
-  "permissions": ["sidePanel", "debugger", "tabs"],
+  "permissions": ["sidePanel", "debugger", "tabs", "storage"],
   "background": { "service_worker": "background.js" },
   "action": { "default_title": "Open Nano Chat" },
   "side_panel": { "default_path": "sidepanel.html" },

@@ -168,6 +168,31 @@ re-installed on the next turn automatically — the session self-heals.
 > Requires jaato with the `chrome_ai` `reuse_page` knob. Without it, the provider
 > falls back to creating (and closing) a dedicated tab.
 
+## Session resume (survives a reload)
+
+Reload the panel and the conversation **keeps going** — Nano still remembers what
+you talked about. The panel persists the daemon `session_id` (in
+`chrome.storage.local`, or `localStorage` as a plain page) and, on the next load,
+**resumes** that session instead of starting fresh:
+
+1. New client with `recovery: { autoReattachSessionId: true }`, connect, register
+   host tools.
+2. `listSessions()` → if the persisted id is still there, `attachSession(id)`
+   (the daemon cold-revives the unloaded session and replays its journal);
+   otherwise create a new session and persist the new id.
+
+The model's full context is restored server-side; the on-screen transcript starts
+fresh with a *"↻ Resumed your previous session"* note (rebuilding the visible
+bubbles from the journal is a possible follow-up). To force a clean start, clear
+the extension's storage (or the session simply falls through to *create* once the
+daemon no longer lists that id).
+
+> **Needs a daemon with WS resume support** for workspace-pinless (browser)
+> clients — the session-workspace index, inline-profile restore, and
+> `suppress_base_instructions`-on-restore. Older daemons that provision ephemeral
+> per-session workspaces (and don't index them) can't resume a reloaded browser
+> session; the panel then just creates a fresh one each load.
+
 ## First-turn latency (warm-up)
 
 Gemini Nano pays a one-time **cold-start** cost — the on-device model has to be
@@ -202,6 +227,7 @@ Two things shape when you feel it:
 | `wsmoke-tools2.mjs` | Verifies the newer tools' page-JS (`list_links`/`type`/`submit`) and that Nano selects + calls `browser_list_links` end-to-end. |
 | `wsmoke-navfix.mjs` | Regression: `navigate to en.wikipedia.org` selects `browser_navigate` (guards the prose-tools preamble fix — no example id copied). |
 | `wsmoke-persona.mjs` | Confirms `system_instructions` reaches Nano and that the persona line keeps it calling tools after a "you can't browse" provocation. |
+| `resume-test.mjs` | Plants a memory, fully disconnects, then resumes from a fresh client (`listSessions` → `attachSession`) and checks the context survived. |
 | `wsmoke-reuse.mjs` | Verifies `reuse_page` attaches (no new tab) and leaves the tab open. |
 | `wsmoke-reuse-nav.mjs` | Verifies the session self-heals when the anchored tab navigates. |
 

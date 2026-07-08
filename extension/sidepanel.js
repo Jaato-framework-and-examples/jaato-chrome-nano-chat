@@ -5,7 +5,7 @@
 // Profile is selected via an INLINE spec (not a named profile-set) and this is
 // a plain attended chat — one long-lived session reused across turns. No
 // cascade (cascades are for unattended multi-stage orchestration).
-import { JaatoClient } from "./vendor/jaato-sdk.js";
+import { JaatoClient, Session, EventTypeValue } from "./vendor/jaato-sdk.js";
 
 // Daemon: `jaato-server --web-socket :8080 --ws-unsafe-no-auth` binds IPv4
 // 0.0.0.0, so connect on 127.0.0.1 (localhost is IPv4/IPv6-ambiguous here).
@@ -333,6 +333,49 @@ function autoResize() {
   input.style.height = Math.min(input.scrollHeight, 120) + "px";
 }
 
+// ── Session persistence + resume ────────────────────────────────────────────
+// Persist the session id so a panel RELOAD resumes the SAME daemon session
+// (Nano keeps the whole conversation) instead of starting fresh. Requires the
+// daemon's WS resume support (session-workspace index + inline-profile restore +
+// suppress_base_instructions on restore). chrome.storage.local in the loaded
+// extension; localStorage when running as a plain page.
+const SID_KEY = "nanoChat.sessionId";
+const _hasChromeStorage = typeof chrome !== "undefined" && chrome.storage && chrome.storage.local;
+async function loadSid() {
+  if (_hasChromeStorage) return (await chrome.storage.local.get(SID_KEY))[SID_KEY] || null;
+  try { return localStorage.getItem(SID_KEY); } catch (e) { return null; }
+}
+async function saveSid(id) {
+  if (!id) return;
+  if (_hasChromeStorage) await chrome.storage.local.set({ [SID_KEY]: id });
+  else try { localStorage.setItem(SID_KEY, id); } catch (e) { /* private mode */ }
+}
+async function dropSid() {
+  if (_hasChromeStorage) await chrome.storage.local.remove(SID_KEY);
+  else try { localStorage.removeItem(SID_KEY); } catch (e) { /* ignore */ }
+}
+
+// Resolve the session id after a fire-and-forget createSession — it arrives on
+// the SessionInfoEvent, and a cold runner bootstrap can take many seconds.
+function waitForSessionId(client, timeoutMs) {
+  if (client.sessionId) return Promise.resolve(client.sessionId);
+  return new Promise((resolve) => {
+    let t;
+    const u = client.subscribe(EventTypeValue.SESSION_INFO, () => { clearTimeout(t); if (u) u(); resolve(client.sessionId); });
+    t = setTimeout(() => { if (u) u(); resolve(null); }, timeoutMs);
+  });
+}
+// The daemon's session list now unions cold provisioned-workspace sessions, so a
+// persisted id resolves here. Returns the list of session ids.
+function listSessionIds(client, timeoutMs = 8000) {
+  return new Promise((resolve) => {
+    let t;
+    const u = client.subscribe(EventTypeValue.SESSION_LIST, (ev) => { clearTimeout(t); if (u) u(); resolve(((ev && ev.sessions) || []).map((s) => s.id)); });
+    t = setTimeout(() => { if (u) u(); resolve([]); }, timeoutMs);
+    client.listSessions();
+  });
+}
+
 async function connect() {
   setStatus("connecting", "connecting…");
   try {
@@ -347,23 +390,66 @@ async function connect() {
         },
       },
     };
-    session = await JaatoClient.session({
+    // Low-level client (not the one-shot facade) so we can branch attach-or-create.
+    // recovery: re-attaches on transient reconnects; with the persisted id below it
+    // also lets a fresh panel load cold-resume the session.
+    const client = new JaatoClient({
       url: URL,
-      profile,                   // inline spec — no cascadeDriverId
-      clientType: "chat",        // interactive turn-based chat (strips signal_completion)
-      clientTools: IN_EXTENSION ? CDP_TOOLS : [],  // CDP tools need chrome.debugger
-      onPermission: () => "y",   // POC: approve tool calls (see SECURITY note above)
+      recovery: { autoReattachSessionId: true },
+      clientConfig: { presentation: { client_type: "chat" } },
       openTimeoutMs: 8000,
-      sessionTimeoutMs: 90000,   // cold runner bootstrap + chrome_ai attach
     });
+    await client.connect();
+
+    // Host tools: registered after connect, before create/attach. Keep the
+    // handlers locally and ship only the schemas (Session wraps TOOL_EXECUTE_REQUEST).
+    const toolHandlers = new Map();
+    if (IN_EXTENSION && CDP_TOOLS.length) {
+      const wire = CDP_TOOLS.map((spec) => {
+        const { handler, ...rest } = spec;
+        if (handler) toolHandlers.set(spec.name, handler);
+        return rest;
+      });
+      await client.registerClientTools(wire);
+    }
+    // Subscribe before attach — the daemon can drive the resumed turn immediately
+    // and the client has no zero-subscriber buffer.
+    client.subscribe(EventTypeValue.AGENT_OUTPUT, () => {});
+
+    // Resume the persisted session if the daemon still lists it; else create fresh.
+    let resumed = false;
+    const persisted = await loadSid();
+    if (persisted) {
+      try {
+        const ids = await listSessionIds(client);
+        if (ids.includes(persisted)) { await client.attachSession(persisted); resumed = true; }
+      } catch (e) {
+        await dropSid();   // stale/broken persisted session — forget it, create fresh
+      }
+    }
+    if (!resumed) {
+      const idReady = waitForSessionId(client, 90000);   // cold bootstrap + chrome_ai attach
+      await client.createSession({ profile });
+      const sid = await idReady;
+      if (!sid) throw new Error("session.new produced no session id in time");
+      await saveSid(sid);
+    } else {
+      await saveSid(client.sessionId);
+    }
+
+    session = new Session(client, () => "y", toolHandlers);   // onPermission: approve (POC)
     setStatus("up", "gemini-nano · connected");
     setEnabled(true);
-    addMeta("Connected — Nano anchored to " + anchor.anchor + ".");
+    addMeta(resumed
+      ? "↻ Resumed your previous session — Nano still remembers the conversation."
+      : "Connected — Nano anchored to " + anchor.anchor + ".");
     addMeta(IN_EXTENSION
       ? "Browser tools ON (navigate · read · list links · click · type · submit · back)."
       : "Browser tools need the loaded extension — running as a plain page, so they're off.");
     input.focus();
   } catch (e) {
+    // Transient failure (daemon down, warmup timeout): keep the persisted id so
+    // the next load can still resume. Resume-specific failures already dropped it.
     setStatus("down", "disconnected");
     setEnabled(false);
     addErr(
