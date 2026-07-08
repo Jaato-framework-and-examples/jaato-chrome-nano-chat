@@ -34,6 +34,20 @@ const PROFILE = {
     "click, type, submit, back). To act on a page, call the matching tool once, " +
     "then answer from its result. Never say you are only a language model or that " +
     "you cannot browse — you can, through these tools.",
+  // Context GC. Nano's ~9k window fills fast (verbose replies), and resume keeps
+  // the session alive across reloads, so without GC a long chat hard-fills to
+  // remaining:0 and Nano flails. The BUDGET strategy is token-budget-aware and
+  // tiered: below threshold it does nothing; threshold→pressure it drops the
+  // oldest droppable/enrichment content down to target; only above pressure does
+  // it touch the PRESERVABLE recent turns — so the live thread stays coherent.
+  gc: {
+    type: "budget",
+    threshold_percent: 75,     // start collecting at 75% of the tiny window
+    target_percent: 45,        // trim back to ~45% — real headroom on 9k
+    pressure_percent: 90,      // protect recent/pinned turns until ~90% (near-full)
+    preserve_recent_turns: 4,  // always keep the last 4 exchanges verbatim
+    notify_on_gc: true,        // surface a "context trimmed" note
+  },
 };
 
 // cdp_url is interpreted DAEMON-side (Linux peer). An SSH reverse tunnel maps
