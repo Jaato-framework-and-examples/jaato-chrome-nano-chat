@@ -194,6 +194,7 @@ Two things shape when you feel it:
 | `wsmoke.mjs` | Plain chat smoke over the exact facade path. |
 | `wsmoke-tools.mjs` | `clientTools` smoke — the model calls a browser tool and grounds on the result. |
 | `wsmoke-tools2.mjs` | Verifies the newer tools' page-JS (`list_links`/`type`/`submit`) and that Nano selects + calls `browser_list_links` end-to-end. |
+| `wsmoke-navfix.mjs` | Regression: `navigate to en.wikipedia.org` selects `browser_navigate` (guards the prose-tools preamble fix — no example id copied). |
 | `wsmoke-reuse.mjs` | Verifies `reuse_page` attaches (no new tab) and leaves the tab open. |
 | `wsmoke-reuse-nav.mjs` | Verifies the session self-heals when the anchored tab navigates. |
 
