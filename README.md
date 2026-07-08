@@ -37,9 +37,8 @@ the Chrome DevTools Protocol.
   `localhost`), never on `chrome-extension://` in current stable builds — which
   is exactly why the provider anchors onto a real page.
 - A running **jaato daemon** (`jaato-server --web-socket …`) with the `chrome_ai`
-  provider. **Note:** the daemon's per-session runner is POSIX-only (it uses
-  `os.fork()`), so on Windows you run the daemon on a Linux/macOS host and tunnel
-  to it (this repo's launcher does exactly that).
+  provider, on a **POSIX host** (Linux/macOS/WSL2). The daemon does not run on
+  native Windows — see [Why the daemon runs on Linux](#why-the-daemon-runs-on-linux-not-natively-on-windows).
 - **Node 18+** (only for the `wsmoke*.mjs` smoke tests and rebuilding the SDK
   bundle).
 
@@ -63,6 +62,37 @@ stack idempotently:
 Edit the config block at the top of the script (paths, host aliases, ports) for
 your environment. If your daemon runs locally (Linux/macOS), you don't need the
 tunnels — point the extension's `URL`/`cdp_url` at your local daemon and Chrome.
+
+### Why the daemon runs on Linux, not natively on Windows
+
+The topology above looks lopsided — Chrome runs on Windows but the jaato daemon
+runs on a Linux peer, bridged by SSH tunnels. That's not a preference; **the
+jaato daemon does not run on native Windows.**
+
+Each session gets its own **runner subprocess**, and the daemon spawns it with
+primitives that only exist on POSIX:
+
+- `socket.socketpair(AF_UNIX)` for the daemon↔runner control channel, and
+- `os.fork()` to fork the runner (the pre-warm pool forks from a warm template
+  without re-`exec`).
+
+Neither `AF_UNIX` socketpairs nor `fork()` exist on Windows CPython, and the WS
+server always spawns a runner (there is no in-process fallback). The symptom if
+you try anyway: the session opens and the `chrome_ai` provider even attaches to
+Chrome, then the turn dies with **`session runner not ready: (re)spawn+bootstrap
+did not complete within 30s`**.
+
+So the daemon needs a POSIX host. Chrome (with Gemini Nano) stays on Windows,
+and two SSH tunnels bridge the gap:
+
+- **`-L 8080:localhost:8090`** — the extension (Windows) reaches the peer daemon.
+- **`-R 9222:[::1]:9222`** — the peer's `chrome_ai` provider reaches *your*
+  Windows Chrome's CDP endpoint.
+
+Both ends therefore talk to `localhost`, which also sidesteps Chrome's CDP
+`Host`-header validation. (WSL2 or any Linux/macOS box works as the peer; if you
+run everything on Linux/macOS to begin with, none of this applies — daemon,
+Chrome, and extension are all local and the tunnels disappear.)
 
 ## Load the extension
 
